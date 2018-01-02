@@ -10,8 +10,12 @@ import jetbrains.buildServer.web.util.WebUtil;
 import org.apache.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
+import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLSession;
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.URL;
 
 public class SlackWrapper
@@ -38,16 +42,22 @@ public class SlackWrapper
 
     public String send(String project, String build, String branch, String statusText, String statusColor, Build bt) throws IOException
     {
+        System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
         String formattedPayload = getFormattedPayload(project, build, branch, statusText, statusColor, bt.getBuildTypeExternalId(), bt.getBuildId());
         LOG.debug(formattedPayload);
-
-        URL url = new URL(this.getSlackUrl());
+        String rawURL = this.getSlackUrl();
+        InetAddress address = InetAddress.getByName("hooks.slack.com");
+        String ip = address.getHostAddress();
+        String newURL = rawURL.replace("hooks.slack.com", ip);
+        URL url = new URL(newURL);
         HttpsURLConnection httpsURLConnection = (HttpsURLConnection) url.openConnection();
 
         httpsURLConnection.setRequestMethod("POST");
         httpsURLConnection.setRequestProperty("User-Agent", "Enliven");
+        httpsURLConnection.setRequestProperty("Host", "hooks.slack.com");
         httpsURLConnection.setRequestProperty("Accept-Language", "en-US,en;q=0.5");
         httpsURLConnection.setDoOutput(true);
+        httpsURLConnection.setHostnameVerifier(getHostnameVerifier());
 
         DataOutputStream dataOutputStream = new DataOutputStream(
             httpsURLConnection.getOutputStream()
@@ -76,6 +86,15 @@ public class SlackWrapper
         }
 
         return getResponseBody(inputStream, responseBody);
+    }
+
+    private HostnameVerifier getHostnameVerifier() {
+        HostnameVerifier hostnameVerifier = new HostnameVerifier() {
+            public boolean verify(String s, SSLSession sslSession) {
+                return true;
+            }
+        };
+        return hostnameVerifier;
     }
 
     @NotNull
